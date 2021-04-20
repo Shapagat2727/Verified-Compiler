@@ -82,7 +82,7 @@ data Boolean = T
 
 
 
-data Statement = Assign String Expr
+data Statement = Initialize String Expr
                | Update String Expr
                | If Boolean Statement Statement
                | While Boolean Statement
@@ -151,7 +151,7 @@ update (x :: xs) sym num new = (case fst x == sym of
 
 
 evalS : (mem : Maybe Memory) -> Statement -> Maybe Memory
-evalS mem (Assign sym ex) = case eval mem ex of
+evalS mem (Initialize sym ex) = case eval mem ex of
                                        Nothing => Nothing
                                        Just a => (case mem of
                                                        Nothing => Nothing
@@ -190,6 +190,13 @@ data Instr = Push Nat
            | LValue String
            | RValue String
            | Store
+           | New String
+           | Label String
+           -- | IfZero String
+           -- | GoTo String
+
+
+
 
 
 
@@ -201,12 +208,31 @@ comp (Const k) = [Push k]
 comp (Plus x y) = (comp x)++(comp y)++[Add]
 comp (Minus x y) = (comp x)++(comp y)++[Subtract]
 comp (Times x y) = (comp x)++(comp y)++[Multiply]
+comp (Var x) = [RValue x]
 
-compS : (st : Statement) -> List Instr
-compS (Assign x y) = [LValue x] ++ (comp y) ++ [Store]
-compS (Update x y) = [LValue x] ++ (comp y) ++ [Store]
-compS (If x y z) = ?compS_rhs_3
-compS (While x y) = ?compS_rhs_4
+compB : Boolean -> List Instr
+-- compB T = [LValue "test"] ++ [Push 1] ++ [Store]
+-- compB F = [LValue "test"] ++ [Push 0] ++ [Store]
+compB T = ?aa
+compB F = ?aa
+compB (Equals x y) = ?aa
+compB (NotEquals x y) = ?aa
+compB (LessThan x y) = ?kk
+
+
+
+compS : Memory -> (st : Statement) -> List Instr
+compS mem (Initialize x y) = (comp y) ++ [New x]
+compS mem (Update x y) = [LValue x] ++ (comp y) ++ [Store]
+compS mem (If test thencl elsecl) = (compB test) ++ ?aa
+-- compS mem (While test docl) = case evalB mem test of
+--                                    False => mem
+--                                    True => evalS (evalS mem docl) (While test docl)
+
+compP : Memory -> (pr: Program) -> List Instr
+compP mem [] = []
+compP mem (x :: xs) = (compS mem x) ++ (compP mem xs)
+
 
 
 
@@ -235,30 +261,46 @@ update_by_index [] pos val = []
 update_by_index ((x,y) :: xs) Z val = (x, val) :: xs
 update_by_index (x :: xs) (S k) val = x :: (update_by_index xs k val)
 
-run : (mem : Memory) ->  (instr:List Instr) -> (stc:Stack) -> Stack
-run mem [] stc = stc
+add_to_mem : Memory -> String -> Nat -> Memory
+add_to_mem mem sym val = (sym, val) :: mem
+
+
+
+
+
+run : (mem : Memory) ->  (instr:List Instr) -> (stc:Stack) -> Memory
+run mem [] stc = mem
 run mem ((Push k) :: xs) stc = run mem xs (k :: stc)
-run mem (Add :: xs) [] = []
+run mem (Add :: xs) [] = mem
 run mem (Add :: xs) (x :: y :: ys) = run mem xs (x + y  :: ys)
-run mem (Add :: xs) [x] = [x]
-run mem (Subtract :: xs) [] = []
+run mem (Add :: xs) [x] = mem
+run mem (Subtract :: xs) [] = mem
 run mem (Subtract :: xs) (x :: y :: ys) = run mem xs (minus y x  :: ys)
-run mem (Subtract :: xs) [x] = [x]
-run mem (Multiply :: xs) [] = []
+run mem (Subtract :: xs) [x] = mem
+run mem (Multiply :: xs) [] = mem
 run mem (Multiply :: xs) (x :: y :: ys) = run mem xs (x * y  :: ys)
-run mem (Multiply :: xs) [x] = [x]
+run mem (Multiply :: xs) [x] = mem
 run mem ((LValue x) :: xs) stc = run mem xs ((index_of mem 0 x) :: stc)
 run mem ((RValue x) :: xs) stc = run mem xs ((value_of mem x) :: stc)
-run mem (Store :: xs) [] = []
+run mem (Store :: xs) [] = mem
 run mem (Store :: xs) (val :: pos :: ys) = run (update_by_index mem pos val) xs ys
+run mem (Store :: xs) [x] = mem
+run mem ((New sym) :: xs) [] = mem
+run mem ((New sym) :: xs) (val :: ys) = run (add_to_mem mem sym val) xs ys
+run mem ((New sym) :: xs) [x] = mem
+
+
+
+
+
 
 
 
 
 
 -- How to run:
--- *project> evalP (Just []) [(Assign "a" (Const 4)), (While (LessThan (Var "a") (Const 55)) (Update "a" (Plus (Var "a") (Const 1))))]
--- Just [("a", 55)] : Maybe (List (String, Nat))
+-- evalP (Just []) [(Initialize "a" (Const 4)), (While (LessThan (Var "a") (Const 55)) (Update "a" (Plus (Var "a") (Const 1))))]
+-- run [] (compP [(Initialize "a" (Const 4)), (If (F) (Update "a" (Plus (Var "a") (Const 1))) (Update "a" (Minus (Var "a") (Const 1))))]) []
 
 
 -- correct : (e : Expr) -> Dec ([eval e] = run (comp e) [])
