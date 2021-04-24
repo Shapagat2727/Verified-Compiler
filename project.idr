@@ -70,8 +70,8 @@ data Expr = Const Nat
 
 data Boolean = T
              | F
-             | Equals Boolean Boolean
-             | NotEquals Boolean Boolean
+             | Equals Expr Expr
+             | NotEquals Expr Expr
              | LessThan Expr Expr
              -- | GreaterThan Expr Expr
              -- | LessEq Expr Expr
@@ -131,8 +131,8 @@ eval mem (Var sym) = case look_up sym mem of
 evalB : Maybe Memory -> Boolean -> Bool
 evalB mem T = True
 evalB mem F = False
-evalB mem (Equals x y) = (evalB mem x) == (evalB mem y)
-evalB mem (NotEquals x y) = case (evalB mem x) == (evalB mem y) of
+evalB mem (Equals x y) = (eval mem x) == (eval mem y)
+evalB mem (NotEquals x y) = case (eval mem x) == (eval mem y) of
                               False => True
                               True => False
 evalB mem (LessThan x y) = case compare (eval mem x) (eval mem y) of
@@ -180,7 +180,7 @@ evalP mem (x :: xs) = case evalS mem x of
                            Nothing => Nothing
                            Just a => evalP (Just a) xs
 
-
+------Stack Machine-----------------------------------------------------------------
 
 
 data Instr = Push Nat
@@ -192,15 +192,11 @@ data Instr = Push Nat
            | Store
            | New String
            | Label String
-           -- | IfZero String
-           -- | GoTo String
-
-
-
-
-
-
-
+           | IfZero String
+           | IfNotZero String
+           | GoTo String
+           | LT
+           | EQ
 
 
 comp : (exp : Expr) -> List Instr
@@ -210,24 +206,20 @@ comp (Minus x y) = (comp x)++(comp y)++[Subtract]
 comp (Times x y) = (comp x)++(comp y)++[Multiply]
 comp (Var x) = [RValue x]
 
-compB : Boolean -> List Instr
--- compB T = [LValue "test"] ++ [Push 1] ++ [Store]
--- compB F = [LValue "test"] ++ [Push 0] ++ [Store]
-compB T = ?aa
-compB F = ?aa
-compB (Equals x y) = ?aa
-compB (NotEquals x y) = ?aa
-compB (LessThan x y) = ?kk
+compB : Memory -> Boolean -> List Instr
+compB mem T = [Push 1]
+compB mem F = [Push 0]
+compB mem (Equals x y) = (comp x)++(comp y) ++ [EQ]
+compB mem (NotEquals x y) = ?aa
+compB mem (LessThan x y) = (comp x)++(comp y) ++ [LT]
 
 
 
 compS : Memory -> (st : Statement) -> List Instr
 compS mem (Initialize x y) = (comp y) ++ [New x]
 compS mem (Update x y) = [LValue x] ++ (comp y) ++ [Store]
-compS mem (If test thencl elsecl) = (compB test) ++ ?aa
--- compS mem (While test docl) = case evalB mem test of
---                                    False => mem
---                                    True => evalS (evalS mem docl) (While test docl)
+compS mem (If test thencl elsecl) = (compB mem test) ++ [IfZero "L1"] ++ (compS mem thencl) ++ [GoTo "L2"] ++ [Label "L1"] ++ (compS mem elsecl) ++ [Label "L2"]
+compS mem (While test docl) = [GoTo "L2"] ++ [Label "L1"] ++ (compS mem docl) ++ [Label "L2"] ++ (compB mem test) ++ [IfNotZero "L1"]
 
 compP : Memory -> (pr: Program) -> List Instr
 compP mem [] = []
@@ -265,6 +257,16 @@ add_to_mem : Memory -> String -> Nat -> Memory
 add_to_mem mem sym val = (sym, val) :: mem
 
 
+-- TODO: change function so that it returns list of all instructions without a certain label
+find_label : (label : String) -> (old : List Instr) -> List Instr
+find_label label [] = []
+find_label label ((Label x) :: xs) = case x == label of
+                                          False => find_label label xs
+                                          True => xs
+find_label label (_ :: xs) = find_label label xs
+-- example
+-- [Push 4, New "a", Push 1, IfZero "L1", LValue "a", RValue "a", Push 1, Subtract, Store, GoTo "L2", Label "L1", LValue "a", RValue "a", Push 1, Add, Store, Label "L2"]
+-- [LValue "a", RValue "a", Push 1, Add, Store, Label "L2"]
 
 
 
@@ -288,6 +290,25 @@ run mem (Store :: xs) [x] = mem
 run mem ((New sym) :: xs) [] = mem
 run mem ((New sym) :: xs) (val :: ys) = run (add_to_mem mem sym val) xs ys
 run mem ((New sym) :: xs) [x] = mem
+run mem ((Label x) :: xs) stc = run mem xs stc
+run mem ((IfZero x) :: xs) (test :: ys) = case test == 0 of
+                                               False => run mem xs ys
+                                               True => run mem ((GoTo x) :: xs) ys
+run mem ((IfNotZero x) :: xs) (test :: ys) = case test == 1 of
+                                               False => run mem xs ys
+                                               True => run mem ((GoTo x) :: xs) ys
+run mem ((GoTo x) :: xs) stc = run mem (find_label x xs) stc
+run mem (EQ :: xs) (x :: y :: ys) = case x == y of
+                                         False => run mem ((Push 0)::xs) ys
+                                         True => run mem ((Push 1)::xs) ys
+run mem (LT :: xs) (x :: y :: ys) = (case compare y x of
+                                          LT => run mem ((Push 1)::xs) ys
+                                          EQ => run mem ((Push 0)::xs) ys
+                                          GT => run mem ((Push 0)::xs) ys)
+
+
+
+
 
 
 
@@ -300,7 +321,8 @@ run mem ((New sym) :: xs) [x] = mem
 
 -- How to run:
 -- evalP (Just []) [(Initialize "a" (Const 4)), (While (LessThan (Var "a") (Const 55)) (Update "a" (Plus (Var "a") (Const 1))))]
--- run [] (compP [(Initialize "a" (Const 4)), (If (F) (Update "a" (Plus (Var "a") (Const 1))) (Update "a" (Minus (Var "a") (Const 1))))]) []
+-- run [] (compP [] [(Initialize "a" (Const 4)), (If (T) (Update "a" (Plus (Var "a") (Const 1))) (Update "a" (Minus (Var "a") (Const 1))))]) []
+-- run [] (compP [] [(Initialize "a" (Const 4)), (While (LessThan (Var "a") (Const 55)) (Update "a" (Plus (Var "a") (Const 1))))]) []
 
 
 -- correct : (e : Expr) -> Dec ([eval e] = run (comp e) [])
