@@ -2,12 +2,42 @@ module project
 import Data.List
 -- %default total
 
+
+--
+-- public export
+-- data Expr = Const Nat
+--           | Plus Expr Expr
+--           | Minus Expr Expr
+--           | Times Expr Expr
+--           | Var String
+
 public export
-data Expr = Const Nat
-          | Plus Expr Expr
-          | Minus Expr Expr
-          | Times Expr Expr
-          | Var String
+Memory : Type
+Memory = List (String, Nat)
+
+
+export
+total
+get_firsts : Memory -> (List String)
+get_firsts [] = []
+get_firsts (x :: xs) = (fst x) :: (get_firsts xs)
+
+public export
+data Expr: Type where
+    Const: Nat -> Expr
+    Plus : Expr -> Expr -> Expr
+    Minus: Expr -> Expr -> Expr
+    Times: Expr -> Expr -> Expr
+    -- Var: String -> Expr
+    Var: (name : String) -> (mem: Memory) -> Dec (Elem name (get_firsts mem)) -> Expr
+
+
+data Typ = TypA --type array
+         | TypI --type int
+         | TypC --type char
+         | TypP --type pointer
+         
+
 
 public export
 data Boolean = T
@@ -22,33 +52,26 @@ data Statement = Initialize String Expr
                | While Boolean Statement
 
 
-public export
-Memory : Type
-Memory = List (String, Nat)
+
 
 public export
 Program : Type
 Program = List Statement
 
 -----------------------------------------------------------------------
-export
-get_firsts : Maybe Memory -> (List String)
-get_firsts Nothing = []
-get_firsts (Just []) = []
-get_firsts (Just (x :: xs)) = (fst x) :: (get_firsts (Just xs))
 
-export
-look_up : String -> Maybe Memory -> Maybe Nat
-look_up sym Nothing = Nothing
-look_up sym (Just []) = Nothing
-look_up sym (Just (x :: xs)) = case fst x == sym of
-                                    False => look_up sym (Just xs)
-                                    True => Just (snd x)
+
+total
+look_up : String -> Memory -> Maybe Nat
+look_up x [] = Nothing
+look_up x (y :: ys) = case fst y == x of
+                             False => look_up x ys
+                             True => Just (snd y)
 
 
 
 export
-eval : Maybe Memory -> Expr -> Maybe Nat
+eval : Memory -> Expr -> Maybe Nat
 eval mem (Const num) = Just num
 eval mem (Plus ex1 ex2) = case eval mem ex1 of
                                Nothing => Nothing
@@ -65,13 +88,14 @@ eval mem (Times ex1 ex2) = case eval mem ex1 of
                                Just x => case eval mem ex2 of
                                               Nothing => Nothing
                                               Just y => Just (x * y)
-eval mem (Var sym) = case isElem sym (get_firsts mem) of
-                          (Yes prf) => look_up sym mem
-                          (No contra) => Nothing
+-- eval mem (Var sym) = case isElem sym (get_firsts mem) of
+--                           (Yes prf) => look_up sym mem
+--                           (No contra) => Nothing
+eval mem (Var sym memory prf) = look_up sym memory
 
 
 export
-evalB : Maybe Memory -> Boolean -> Bool
+evalB : Memory -> Boolean -> Bool
 evalB mem T = True
 evalB mem F = False
 evalB mem (Equals x y) = (eval mem x) == (eval mem y)
@@ -89,21 +113,63 @@ update (x :: xs) sym num new = (case fst x == sym of
                                                   True => update xs sym num ((sym, num)::new))
 
 
+beginsWithChar : (name : String) -> Bool
+beginsWithChar name = case unpack name of
+                           [] => False
+                           (x :: xs) => (case isDigit x of
+                                              False => True
+                                              True => False)
+
+hasWhiteSpaces : (name : List Char) -> Bool
+hasWhiteSpaces [] = False
+hasWhiteSpaces (x :: xs) = case x == ' ' of
+                                False => hasWhiteSpaces xs
+                                True => True
+
+-- get_first_char : (name: String) -> Char
+-- get_first_char name = case unpack name of
+--                            [] => 'a'
+--                            (x :: xs) => x
+--
+--
+-- let alphabet = ['a']
+--
+-- isValidStart : DecEq String => (name : String) -> (alphabet : List Char) -> DecEq (Elem (get_first_char name) alphabet)
+-- -- -- isValidStart name = case unpack name of
+-- -- --                          [] => ?isValidStart_rhs_1
+-- -- --                          (x :: xs) => (case isElem x alphabet of
+-- -- --                                             case_val => ?isValidStart_rhs_2)
+-- isValidStart name alphabet = case isElem (get_first_char name) alphabet of
+--                                   (Yes prf) => ?a
+--                                   (No contra) => ?isValidStart_rhs_3
+
+
+
+checkVariable : (mem : Memory) -> (name: String) -> Bool
+checkVariable mem name = case length name of
+                              Z => False
+                              (S k) => (case beginsWithChar name of
+                                             False => False
+                                             True => (case hasWhiteSpaces (unpack name) of
+                                                           True => False
+                                                           False => (case isElem name (get_firsts mem) of
+                                                                          (Yes prf) => True
+                                                                          (No contra) => False)))
+
+
 export
-evalS : (mem : Maybe Memory) -> Statement -> Maybe Memory
+evalS : (mem : Memory) -> Statement -> Memory
 evalS mem (Initialize sym ex) = case eval mem ex of
-                                       Nothing => Nothing
-                                       Just a => (case mem of
-                                                       Nothing => Nothing
-                                                       (Just x) => Just ((sym, a) :: x))
+                                     Nothing => mem
+                                     (Just x) => (case checkVariable mem sym of
+                                                       False => mem
+                                                       True => (sym, x) :: mem)
 
 evalS mem (Update sym ex) = case eval mem ex of
-                                 Nothing => Nothing
-                                 Just a => (case mem of
-                                                 Nothing => Nothing
-                                                 (Just x) => (case isElem sym (get_firsts (Just x)) of
-                                                                   (Yes prf) => Just (update x sym a [])
-                                                                   (No contra) => Nothing))
+                                 Nothing => mem
+                                 (Just x) => (case isElem sym (get_firsts mem) of
+                                                   (Yes prf) => update mem sym x []
+                                                   (No contra) => mem)
 
 
 evalS mem (If test thencl elsecl) = case evalB mem test of
@@ -115,12 +181,14 @@ evalS mem (While test docl) = case evalB mem test of
                                    True => evalS (evalS mem docl) (While test docl)
 
 
+
+
+
 export
-evalP : Maybe Memory -> Program -> Maybe Memory
+evalP : Memory -> Program -> Memory
 evalP mem [] = mem
-evalP mem (x :: xs) = case evalS mem x of
-                           Nothing => Nothing
-                           Just a => evalP (Just a) xs
+evalP mem (x :: xs) = evalP (evalS mem x) xs
+
 
 ------Stack Machine-----------------------------------------------------------------
 
@@ -146,7 +214,8 @@ comp (Const k) = [Push k]
 comp (Plus x y) = (comp x)++(comp y)++[Add]
 comp (Minus x y) = (comp x)++(comp y)++[Subtract]
 comp (Times x y) = (comp x)++(comp y)++[Multiply]
-comp (Var x) = [RValue x]
+-- comp (Var x) = [RValue x]
+comp (Var x y z) = [RValue x]
 
 export
 compB : Memory -> Boolean -> List Instr
@@ -185,6 +254,8 @@ index_of [] idx sym = ?aa_1
 index_of (x :: xs) idx sym = case fst x == sym of
                                   False => index_of xs (idx + 1) sym
                                   True => idx
+
+
 
 export
 value_of : Memory -> String -> Nat
@@ -226,7 +297,7 @@ run mem all (Subtract :: xs) [x] = mem
 run mem all (Multiply :: xs) [] = mem
 run mem all (Multiply :: xs) (x :: y :: ys) = run mem all xs (x * y  :: ys)
 run mem all (Multiply :: xs) [x] = mem
-run mem all ((LValue x) :: xs) stc = case isElem x (get_firsts (Just mem))  of
+run mem all ((LValue x) :: xs) stc = case isElem x (get_firsts mem)  of
                                           (Yes prf) => run mem all xs ((index_of mem 0 x) :: stc)
                                           (No contra) => mem
 run mem all ((RValue x) :: xs) stc = run mem all xs ((value_of mem x) :: stc)
@@ -237,6 +308,13 @@ run mem all ((New sym) :: xs) [] = mem
 run mem all ((New sym) :: xs) (val :: ys) = run (add_to_mem mem sym val) all xs ys
 run mem all ((New sym) :: xs) [x] = mem
 run mem all ((Label x) :: xs) stc = run mem all xs stc
+-- run mem all ((IfZero k) :: xs) stc =  ?ui
+-- run mem all ((IfNotZero k) :: xs) stc =  ?ui
+-- run mem all ((GoTo k) :: xs) stc =  ?ui
+-- run mem all (LT :: xs) stc =  ?ui
+-- run mem all (EQ :: xs) stc = ?ui
+
+
 run mem all ((IfZero x) :: xs) (test :: ys) = case test == 0 of
                                                False => run mem all xs ys
                                                True => run mem all ((GoTo x) :: xs) ys
