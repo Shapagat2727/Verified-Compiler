@@ -3,85 +3,63 @@ import Data.List
 import project
 
 
--- test: List (String, Nat) -> IO()
--- test [] = ?test_rhs_1
--- test (x :: xs) = ?test_rhs_2
-
-
 main : IO ()
+-- initialization
 
-          -- initialization
-main = do let instr = compP [] [(Initialize "a" (Const 6))]
-          putStr ("Test 1 : ")
-          putStrLn (show ((run [] instr instr []) == [("a", 6)]))
+main = do     let mem = (the Memory) []
+              -- initialization
 
+              let program = (the Program) [(Initialize "a" (Const 6) (isValidString "a"))]
+              let instr = compP mem program
+              putStr ("Test 1 : ")
+              putStr (show ((run mem instr instr []) == [("a", 6)]))
+              putStrLn (show ((evalP mem program) == [("a", 6)]))
 
-          -- addition
-          let mem = (the Memory) []
-          let instr = compP mem [(Initialize "a" (Const 6)), (Initialize "b" (Const 4)), (Initialize "c" (Plus (Var "a" mem (isElem "a" (get_firsts mem))) (Var "b" mem (isElem "b" (get_firsts mem)))))]
-          putStr ("Test 2 : ")
-          putStrLn (show ((run [] instr instr []) == [("c", 10), ("b", 4), ("a", 6)]))
+              -- initialization wrong
+              let program = [(Initialize "" (Const 6) (isValidString ""))]
+              let instr = compP mem program
+              putStr ("Test 2 : ")
+              putStr (show ((run mem instr instr []) == []))
+              putStrLn (show ((evalP mem program) == []))
 
-          -- subtraction
-          let instr = compP [] [(Initialize "a" (Const 6)), (Initialize "b" (Const 4)), (Initialize "c" (Minus (Var "a" mem (isElem "a" (get_firsts mem))) (Var "b" mem (isElem "b" (get_firsts mem)))))]
-          putStr ("Test 3 : ")
-          putStrLn (show ((run [] instr instr []) == [("c", 2), ("b", 4), ("a", 6)]))
+              -- addition
+              let program = (the Program) [(Initialize "a" (Const 6) (isValidString "a")), (Initialize "b" (Const 4) (isValidString "b")), (Initialize "c" (Plus (Var "b" [("b"), ("a")] (Here)) (Var "a" [("b"), ("a")] (There Here))) (isValidString "c"))]
+              let instr = compP mem program
+              putStr ("Test 3 : ")
+              putStr(show ((run mem instr instr []) == [("c", 10), ("b", 4), ("a", 6)]))
+              putStrLn (show ((evalP mem program) == [("c", 10), ("b", 4), ("a", 6)]))
 
-          -- multiplication
-          let instr = compP [] [(Initialize "a" (Const 6)), (Initialize "b" (Const 4)), (Initialize "c" (Times (Var "a" mem (isElem "a" (get_firsts mem))) (Var "b" mem (isElem "b" (get_firsts mem)))))]
-          putStr ("Test 4 : ")
-          putStrLn (show ((run [] instr instr []) == [("c", 24), ("b", 4), ("a", 6)]))
+              -- triple if true true false
+              let program = (the Program) [(Initialize "a" (Const 6) (isValidString "a")), (Initialize "b" (Const 4) (isValidString "b")), (If (T) (If (T) (If (F) (Initialize "c" (Times (Var "a" [("b"), ("a")] (There Here)) (Var "b" [("b"), ("a")] (Here))) (isValidString "c")) (Initialize "c" (Const 1) (isValidString "c"))) (Initialize "c" (Const 2) (isValidString "c"))) (Initialize "c" (Const 3) (isValidString "c")))]
+              let instr = compP mem program
+              putStr ("Test 4 : ")
+              putStr (show ((run mem instr instr []) == [("c", 1), ("b", 4), ("a", 6)]))
+              putStrLn (show ((evalP mem program) == [("c", 1), ("b", 4), ("a", 6)]))
 
-          -- single if true
-          let instr = compP [] [(Initialize "a" (Const 6)), (Initialize "b" (Const 4)), (If (T) (Initialize "c" (Times (Var "a" mem (isElem "a" (get_firsts mem))) (Var "b" mem (isElem "b" (get_firsts mem))))) (Initialize "c" (Const 3)))]
-          putStr ("Test 5 : ")
-          putStrLn (show ((run [] instr instr []) == [("c", 24), ("b", 4), ("a", 6)]))
+              -- while loop
+              let program = (the Program) [(Initialize "a" (Const 6) (isValidString "a")), (Initialize "b" (Const 4) (isValidString "b")), (While (LessThan (Var "b" [("b"), ("a")] (Here)) (Var "a" [("b"), ("a")] (There Here))) (Update "b" (Plus (Var "b" [("b"), ("a")] (Here)) (Const 1))))]
+              let instr = compP mem program
+              putStr ("Test 5 : ")
+              putStr (show ((run mem instr instr []) == [("b", 6), ("a", 6)]))
+              putStrLn (show ((evalP mem program) == [("b", 6), ("a", 6)]))
 
-          -- single if false
-          let instr = compP [] [(Initialize "a" (Const 6)), (Initialize "b" (Const 4)), (If (F) (Initialize "c" (Times (Var "a" mem (isElem "a" (get_firsts mem))) (Var "b" mem (isElem "b" (get_firsts mem))))) (Initialize "c" (Const 3)))]
-          putStr ("Test 6 : ")
-          putStrLn (show ((run [] instr instr []) == [("c", 3), ("b", 4), ("a", 6)]))
+              -- initialize array
+              let program = (the Program) [(InitArray "arr" (ArrayNat 5))]
+              let instr = compP mem program
+              putStr ("Test 6 : ")
+              putStr (show ((run mem instr instr []) == [("arr0", 0), ("arr1", 0), ("arr2", 0), ("arr3", 0), ("arr4", 0)]))
+              putStrLn (show ((evalP mem program) == [("arr0", 0), ("arr1", 0), ("arr2", 0), ("arr3", 0), ("arr4", 0)]))
 
-          -- double if true true
-          let instr = compP [] [(Initialize "a" (Const 6)), (Initialize "b" (Const 4)), (If (T) (If (T) (Initialize "c" (Times (Var "a" mem (isElem "a" (get_firsts mem))) (Var "b" mem (isElem "b" (get_firsts mem))))) (Initialize "c" (Const 2))) (Initialize "c" (Const 3)))]
-          putStr ("Test 7 : ")
-          putStrLn (show ((run [] instr instr []) == [("c", 24), ("b", 4), ("a", 6)]))
+              --access array
+              let program = (the Program) [(InitArray "arr" (ArrayNat 5)), (Initialize "a" (Access "arr" 0 ["arr0", "arr1", "arr2", "arr3", "arr4"] (Here)) (isValidString "a"))]
+              let instr = compP mem program
+              putStr ("Test 7 : ")
+              putStr (show ((run mem instr instr []) == [("a", 0), ("arr0", 0), ("arr1", 0), ("arr2", 0), ("arr3", 0), ("arr4", 0)]))
+              putStrLn (show ((evalP mem program) == [("a", 0), ("arr0", 0), ("arr1", 0), ("arr2", 0), ("arr3", 0), ("arr4", 0)]))
 
-          -- double if false true
-          let instr = compP [] [(Initialize "a" (Const 6)), (Initialize "b" (Const 4)), (If (F) (If (T) (Initialize "c" (Times (Var "a" mem (isElem "a" (get_firsts mem))) (Var "b" mem (isElem "b" (get_firsts mem))))) (Initialize "c" (Const 2))) (Initialize "c" (Const 3)))]
-          putStr ("Test 8 : ")
-          putStrLn (show ((run [] instr instr []) == [("c", 3), ("b", 4), ("a", 6)]))
-
-          -- double if true false
-          let instr = compP [] [(Initialize "a" (Const 6)), (Initialize "b" (Const 4)), (If (T) (If (F) (Initialize "c" (Times (Var "a" mem (isElem "a" (get_firsts mem))) (Var "b" mem (isElem "b" (get_firsts mem))))) (Initialize "c" (Const 2))) (Initialize "c" (Const 3)))]
-          putStr ("Test 9 : ")
-          putStrLn (show ((run [] instr instr []) == [("c", 2), ("b", 4), ("a", 6)]))
-
-          -- triple if true true true
-          let instr = compP [] [(Initialize "a" (Const 6)), (Initialize "b" (Const 4)), (If (T) (If (T) (If (T) (Initialize "c" (Times (Var "a" mem (isElem "a" (get_firsts mem))) (Var "b" mem (isElem "b" (get_firsts mem))))) (Initialize "c" (Const 1))) (Initialize "c" (Const 2))) (Initialize "c" (Const 3)))]
-          putStr ("Test 10 : ")
-          putStrLn (show ((run [] instr instr []) == [("c", 24), ("b", 4), ("a", 6)]))
-
-          -- triple if false true true
-          let instr = compP [] [(Initialize "a" (Const 6)), (Initialize "b" (Const 4)), (If (F) (If (T) (If (T) (Initialize "c" (Times (Var "a" mem (isElem "a" (get_firsts mem))) (Var "b" mem (isElem "b" (get_firsts mem))))) (Initialize "c" (Const 1))) (Initialize "c" (Const 2))) (Initialize "c" (Const 3)))]
-          putStr ("Test 11 : ")
-          putStrLn (show ((run [] instr instr []) == [("c", 3), ("b", 4), ("a", 6)]))
-
-          -- triple if true false true
-          let instr = compP [] [(Initialize "a" (Const 6)), (Initialize "b" (Const 4)), (If (T) (If (F) (If (T) (Initialize "c" (Times (Var "a" mem (isElem "a" (get_firsts mem))) (Var "b" mem (isElem "b" (get_firsts mem))))) (Initialize "c" (Const 1))) (Initialize "c" (Const 2))) (Initialize "c" (Const 3)))]
-          putStr ("Test 12 : ")
-          putStrLn (show ((run [] instr instr []) == [("c", 2), ("b", 4), ("a", 6)]))
-
-          -- triple if true true false
-          let instr = compP [] [(Initialize "a" (Const 6)), (Initialize "b" (Const 4)), (If (T) (If (T) (If (F) (Initialize "c" (Times (Var "a" mem (isElem "a" (get_firsts mem))) (Var "b" mem (isElem "b" (get_firsts mem))))) (Initialize "c" (Const 1))) (Initialize "c" (Const 2))) (Initialize "c" (Const 3)))]
-          putStr ("Test 13 : ")
-          putStrLn (show ((run [] instr instr []) == [("c", 1), ("b", 4), ("a", 6)]))
-
-          -- while loop
-          let instr = compP [] [(Initialize "a" (Const 6)), (Initialize "b" (Const 4)), (While (LessThan (Var "b" mem (isElem "b" (get_firsts mem))) (Var "a" mem (isElem "a" (get_firsts mem)))) (Update "b" (Plus (Var "b" mem (isElem "b" (get_firsts mem))) (Const 1))))]
-          putStr ("Test 14 : ")
-          putStrLn (show ((run [] instr instr []) == [("b", 6), ("a", 6)]))
-
-          let instr = compP [] [(Initialize "a" (Const 6)), (Update "a" (Const 5))]
-          putStr ("Test 15 : ")
-          putStrLn (show ((run [] instr instr []) == [("a", 5)]))
+              --update array
+              let program = (the Program) [(InitArray "arr" (ArrayNat 5)), (UpdateArray "arr" 0 (Const 6) ["arr0", "arr1", "arr2", "arr3", "arr4"] (Here))]
+              let instr = compP mem program
+              putStr ("Test 8 : ")
+              putStr (show ((run mem instr instr []) == [("arr0", 6), ("arr1", 0), ("arr2", 0), ("arr3", 0), ("arr4", 0)]))
+              putStrLn (show ((evalP mem program) == [("arr4", 0), ("arr3", 0), ("arr2", 0), ("arr1", 0), ("arr0", 6)]))

@@ -1,67 +1,89 @@
 module project
 import Data.List
--- %default total
+import Data.Vect
+%default total
 
 
---
--- public export
--- data Expr = Const Nat
---           | Plus Expr Expr
---           | Minus Expr Expr
---           | Times Expr Expr
---           | Var String
 
+-- memory type to store variables and corresponding values
 public export
 Memory : Type
 Memory = List (String, Nat)
 
 
+-- returns list of all variables in memory
 export
-total
 get_firsts : Memory -> (List String)
 get_firsts [] = []
 get_firsts (x :: xs) = (fst x) :: (get_firsts xs)
 
+-- expression type
 public export
 data Expr: Type where
     Const: Nat -> Expr
     Plus : Expr -> Expr -> Expr
     Minus: Expr -> Expr -> Expr
     Times: Expr -> Expr -> Expr
-    -- Var: String -> Expr
-    Var: (name : String) -> (mem: Memory) -> Dec (Elem name (get_firsts mem)) -> Expr
+    Var: (name : String) -> (firsts: List String) -> (Elem name firsts) -> Expr
+    Access: (name : String) -> (index : Nat) -> (firsts: List String)->(Elem (name ++ (show index)) firsts) -> Expr
+
+-- array type
+public export
+data Array: Type where
+    ArrayNat: (length : Nat) -> Array
 
 
-data Typ = TypA --type array
-         | TypI --type int
-         | TypC --type char
-         | TypP --type pointer
-         
-
-
+-- boolean type
 public export
 data Boolean = T
              | F
              | Equals Expr Expr
              | LessThan Expr Expr
 
+
+-- to check if a variable name is NOT a nil
+
 public export
-data Statement = Initialize String Expr
-               | Update String Expr
-               | If Boolean Statement Statement
-               | While Boolean Statement
+data ValidInput : (List Char) -> Type where
+     Letter : (c : Char) -> ValidInput [c]
+     Letters : (cs: List Char) -> ValidInput cs
+
+export
+isValidNil : ValidInput [] -> Void
+isValidNil (Letter _) impossible
+isValidNil (Letters []) = ?isValidNil_rhs_1
+
+export
+isValidInput : (cs : List Char) -> Dec (ValidInput cs)
+isValidInput [] = No isValidNil
+isValidInput (x :: xs) = Yes (Letters (x :: xs))
+
+export
+isValidString : (s: String) -> Dec (ValidInput (unpack s))
+isValidString s = isValidInput (unpack s)
 
 
 
 
+-- type statement
+public export
+data Statement: Type where
+    Initialize: (name: String) -> Expr -> (Dec (ValidInput (unpack name))) -> Statement
+    Update: String -> Expr -> Statement
+    If: Boolean -> Statement -> Statement -> Statement
+    While: Boolean -> Statement -> Statement
+    InitArray: String -> Array -> Statement
+    UpdateArray: (name : String) -> (index : Nat) -> (new: Expr) -> (firsts: List String)->(Elem (name ++ (show index)) firsts) -> Statement
+
+-- type program
 public export
 Program : Type
 Program = List Statement
 
 -----------------------------------------------------------------------
 
-
-total
+-- returns a value of variable in memory
+export
 look_up : String -> Memory -> Maybe Nat
 look_up x [] = Nothing
 look_up x (y :: ys) = case fst y == x of
@@ -69,7 +91,7 @@ look_up x (y :: ys) = case fst y == x of
                              True => Just (snd y)
 
 
-
+-- evaluates an expression
 export
 eval : Memory -> Expr -> Maybe Nat
 eval mem (Const num) = Just num
@@ -88,12 +110,11 @@ eval mem (Times ex1 ex2) = case eval mem ex1 of
                                Just x => case eval mem ex2 of
                                               Nothing => Nothing
                                               Just y => Just (x * y)
--- eval mem (Var sym) = case isElem sym (get_firsts mem) of
---                           (Yes prf) => look_up sym mem
---                           (No contra) => Nothing
-eval mem (Var sym memory prf) = look_up sym memory
+eval mem (Var sym memory prf) = look_up sym mem
+eval mem (Access arr ind memory prf) = look_up (arr ++ (show ind)) mem
 
 
+-- evaluates boolean
 export
 evalB : Memory -> Boolean -> Bool
 evalB mem T = True
@@ -104,7 +125,7 @@ evalB mem (LessThan x y) = case compare (eval mem x) (eval mem y) of
                             EQ => False
                             GT => False
 
-
+-- updates variable with a new value
 export
 update : (old : Memory) -> String -> Nat -> (new : Memory) -> Memory
 update [] sym num new = new
@@ -113,85 +134,48 @@ update (x :: xs) sym num new = (case fst x == sym of
                                                   True => update xs sym num ((sym, num)::new))
 
 
-beginsWithChar : (name : String) -> Bool
-beginsWithChar name = case unpack name of
-                           [] => False
-                           (x :: xs) => (case isDigit x of
-                                              False => True
-                                              True => False)
+-- adds a variable and a corresponding value to memory
+export
+add_to_mem : Memory -> String -> Nat -> Memory
+add_to_mem mem sym val = (sym, val) :: mem
 
-hasWhiteSpaces : (name : List Char) -> Bool
-hasWhiteSpaces [] = False
-hasWhiteSpaces (x :: xs) = case x == ' ' of
-                                False => hasWhiteSpaces xs
-                                True => True
-
--- get_first_char : (name: String) -> Char
--- get_first_char name = case unpack name of
---                            [] => 'a'
---                            (x :: xs) => x
---
---
--- let alphabet = ['a']
---
--- isValidStart : DecEq String => (name : String) -> (alphabet : List Char) -> DecEq (Elem (get_first_char name) alphabet)
--- -- -- isValidStart name = case unpack name of
--- -- --                          [] => ?isValidStart_rhs_1
--- -- --                          (x :: xs) => (case isElem x alphabet of
--- -- --                                             case_val => ?isValidStart_rhs_2)
--- isValidStart name alphabet = case isElem (get_first_char name) alphabet of
---                                   (Yes prf) => ?a
---                                   (No contra) => ?isValidStart_rhs_3
-
-
-
-checkVariable : (mem : Memory) -> (name: String) -> Bool
-checkVariable mem name = case length name of
-                              Z => False
-                              (S k) => (case beginsWithChar name of
-                                             False => False
-                                             True => (case hasWhiteSpaces (unpack name) of
-                                                           True => False
-                                                           False => (case isElem name (get_firsts mem) of
-                                                                          (Yes prf) => True
-                                                                          (No contra) => False)))
-
+-- evaluates a statement
 
 export
 evalS : (mem : Memory) -> Statement -> Memory
-evalS mem (Initialize sym ex) = case eval mem ex of
-                                     Nothing => mem
-                                     (Just x) => (case checkVariable mem sym of
-                                                       False => mem
-                                                       True => (sym, x) :: mem)
-
+evalS mem (Initialize sym ex prf) = case prf of
+                                         (Yes a) => case eval mem ex of
+                                                         Nothing => mem
+                                                         (Just x) => add_to_mem mem sym x
+                                         (No contra) => mem
 evalS mem (Update sym ex) = case eval mem ex of
                                  Nothing => mem
                                  (Just x) => (case isElem sym (get_firsts mem) of
                                                    (Yes prf) => update mem sym x []
                                                    (No contra) => mem)
-
-
 evalS mem (If test thencl elsecl) = case evalB mem test of
                                          False =>  evalS mem elsecl
                                          True => evalS mem thencl
-
 evalS mem (While test docl) = case evalB mem test of
                                    False => mem
-                                   True => evalS (evalS mem docl) (While test docl)
+                                   True => assert_total (evalS (evalS mem docl) (While test docl))
+evalS mem (InitArray sym (ArrayNat Z )) = mem
+evalS mem (InitArray sym (ArrayNat (S len))) = assert_total (evalS ((sym ++ (show len), 0) :: mem) (InitArray sym (ArrayNat len)))
+evalS mem (UpdateArray sym ind ex firsts prf) = case eval mem ex of
+                                                     Nothing => mem
+                                                     (Just x) => update mem (sym ++ (show ind)) x []
 
 
-
-
-
+-- evaluates a program
 export
 evalP : Memory -> Program -> Memory
 evalP mem [] = mem
 evalP mem (x :: xs) = evalP (evalS mem x) xs
 
 
-------Stack Machine-----------------------------------------------------------------
+------STACK - MACHINE -----------------------------------------------------------------
 
+-- type instruction
 public export
 data Instr = Push Nat
            | Add
@@ -208,15 +192,17 @@ data Instr = Push Nat
            | LT
            | EQ
 
+-- compiles an expression
 export
 comp : (exp : Expr) -> List Instr
 comp (Const k) = [Push k]
 comp (Plus x y) = (comp x)++(comp y)++[Add]
 comp (Minus x y) = (comp x)++(comp y)++[Subtract]
 comp (Times x y) = (comp x)++(comp y)++[Multiply]
--- comp (Var x) = [RValue x]
 comp (Var x y z) = [RValue x]
+comp (Access x y z p) = [RValue (x ++ show (y))]
 
+-- compiles a boolean
 export
 compB : Memory -> Boolean -> List Instr
 compB mem T = [Push 1]
@@ -224,30 +210,37 @@ compB mem F = [Push 0]
 compB mem (Equals x y) = (comp x)++(comp y) ++ [EQ]
 compB mem (LessThan x y) = (comp x)++(comp y) ++ [LT]
 
+-- increments a label by 1
 export
 increment : Nat -> Nat
 increment val = val + 1
 
+-- compiles a statement
 export
 compS : Memory -> (label : Nat) -> (st : Statement) -> List Instr
-compS mem label (Initialize x y) = (comp y) ++ [New x]
+compS mem label (Initialize x y prf) = case prf of
+                                            (Yes a) => (comp y) ++ [New x]
+                                            (No contra) => []
 compS mem label (Update x y) = [LValue x] ++ (comp y) ++ [Store]
 compS mem label (If test thencl elsecl) = (compB mem test) ++ [IfZero (increment label)] ++ (compS mem (increment (increment label)) thencl) ++ [GoTo (increment (increment label))] ++ [Label (increment label)] ++ (compS mem (increment (increment label)) elsecl) ++ [Label (increment (increment label))]
 compS mem label (While test docl) = [GoTo (increment (increment label))] ++ [Label (increment label)] ++ (compS mem (increment (increment label)) docl) ++ [Label (increment (increment label))] ++ (compB mem test) ++ [IfNotZero (increment label)]
+compS mem label (InitArray sym (ArrayNat Z)) = []
+compS mem label (InitArray sym (ArrayNat (S k))) = assert_total ([Push 0] ++ [New (sym ++ (show k))] ++ (compS mem label (InitArray sym (ArrayNat (k)))))
+compS mem label (UpdateArray sym ind new firsts prf) = [LValue (sym ++ (show ind))] ++ (comp new) ++ [Store]
 
+-- compiles a program
 export
 compP : Memory -> (pr: Program) -> List Instr
 compP mem [] = []
 compP mem (x :: xs) = (compS mem 0 x) ++ (compP mem xs)
 
 
-
-
-
+-- type stack
 public export
 Stack : Type
 Stack = List Nat
 
+-- returns index of a variable in memory
 export
 index_of : Memory -> Nat -> String -> Nat
 index_of [] idx sym = ?aa_1
@@ -256,7 +249,7 @@ index_of (x :: xs) idx sym = case fst x == sym of
                                   True => idx
 
 
-
+-- returns value of a variable in memory
 export
 value_of : Memory -> String -> Nat
 value_of [] y = ?value_of_rhs_1
@@ -264,17 +257,15 @@ value_of (x :: xs) sym = case fst x == sym of
                               False => value_of xs sym
                               True => snd x
 
+-- update a value of a variable at certain index
 export
 update_by_index : Memory -> (pos: Nat) -> Nat -> Memory
 update_by_index [] pos val = []
 update_by_index ((x,y) :: xs) Z val = (x, val) :: xs
 update_by_index (x :: xs) (S k) val = x :: (update_by_index xs k val)
 
-export
-add_to_mem : Memory -> String -> Nat -> Memory
-add_to_mem mem sym val = (sym, val) :: mem
 
-
+-- returns list of instructions after a certain label
 export
 find_label : (label : Nat) -> (all : List Instr) -> List Instr
 find_label label [] = []
@@ -284,6 +275,7 @@ find_label label ((Label x) :: xs) = case x == label of
 find_label label (_ :: xs) = find_label label xs
 
 
+-- runs instructions
 export
 run : (mem : Memory) -> (all : List Instr) -> (instr:List Instr) -> (stc:Stack) -> Memory
 run mem all [] stc = mem
@@ -308,23 +300,21 @@ run mem all ((New sym) :: xs) [] = mem
 run mem all ((New sym) :: xs) (val :: ys) = run (add_to_mem mem sym val) all xs ys
 run mem all ((New sym) :: xs) [x] = mem
 run mem all ((Label x) :: xs) stc = run mem all xs stc
--- run mem all ((IfZero k) :: xs) stc =  ?ui
--- run mem all ((IfNotZero k) :: xs) stc =  ?ui
--- run mem all ((GoTo k) :: xs) stc =  ?ui
--- run mem all (LT :: xs) stc =  ?ui
--- run mem all (EQ :: xs) stc = ?ui
-
-
+run mem all ((IfZero x) :: xs) [] =  mem
 run mem all ((IfZero x) :: xs) (test :: ys) = case test == 0 of
                                                False => run mem all xs ys
                                                True => run mem all ((GoTo x) :: xs) ys
+run mem all ((IfNotZero x) :: xs) [] =  mem
 run mem all ((IfNotZero x) :: xs) (test :: ys) = case test == 1 of
                                                False => run mem all xs ys
                                                True => run mem all ((GoTo x) :: xs) ys
+-- run mem all ((GoTo x) :: xs) [] =  mem
 run mem all ((GoTo x) :: xs) stc = run mem all (find_label x all) stc
+run mem all (EQ :: xs) [] =  mem
 run mem all (EQ :: xs) (x :: y :: ys) = case x == y of
                                          False => run mem all ((Push 0)::xs) ys
                                          True => run mem all ((Push 1)::xs) ys
+run mem all (LT :: xs) [] =  mem
 run mem all (LT :: xs) (x :: y :: ys) = (case compare y x of
                                           LT => run mem all ((Push 1)::xs) ys
                                           EQ => run mem all ((Push 0)::xs) ys
