@@ -24,6 +24,7 @@ data Expr: Type where
     Plus : Expr -> Expr -> Expr
     Minus: Expr -> Expr -> Expr
     Times: Expr -> Expr -> Expr
+    Over : Expr -> Expr -> Expr
     Var: (name : String) -> (firsts: List String) -> (Elem name firsts) -> Expr
     Access: (name : String) -> (index : Nat) -> (firsts: List String)->(Elem (name ++ (show index)) firsts) -> Expr
 
@@ -41,34 +42,10 @@ data Boolean = T
              | LessThan Expr Expr
 
 
--- to check if a variable name is NOT a nil
-
-public export
-data ValidInput : (List Char) -> Type where
-     Letter : (c : Char) -> ValidInput [c]
-     Letters : (cs: List Char) -> ValidInput cs
-
-export
-isValidNil : ValidInput [] -> Void
-isValidNil (Letter _) impossible
-isValidNil (Letters []) = ?isValidNil_rhs_1
-
-export
-isValidInput : (cs : List Char) -> Dec (ValidInput cs)
-isValidInput [] = No isValidNil
-isValidInput (x :: xs) = Yes (Letters (x :: xs))
-
-export
-isValidString : (s: String) -> Dec (ValidInput (unpack s))
-isValidString s = isValidInput (unpack s)
-
-
-
-
 -- type statement
 public export
 data Statement: Type where
-    Initialize: (name: String) -> Expr -> (Dec (ValidInput (unpack name))) -> Statement
+    Initialize : (name : Vect (S k) Char) -> Expr -> Statement
     Update: String -> Expr -> Statement
     If: Boolean -> Statement -> Statement -> Statement
     While: Boolean -> Statement -> Statement
@@ -110,6 +87,11 @@ eval mem (Times ex1 ex2) = case eval mem ex1 of
                                Just x => case eval mem ex2 of
                                               Nothing => Nothing
                                               Just y => Just (x * y)
+eval mem (Over ex1 ex2) = case eval mem ex1 of
+                               Nothing => Nothing
+                               Just x => (case eval mem ex2 of
+                                               Nothing => Nothing
+                                               Just y => assert_total (Just (divNat x y)))
 eval mem (Var sym memory prf) = look_up sym mem
 eval mem (Access arr ind memory prf) = look_up (arr ++ (show ind)) mem
 
@@ -141,13 +123,15 @@ add_to_mem mem sym val = (sym, val) :: mem
 
 -- evaluates a statement
 
+fromVect : (xs : Vect n Char) -> String
+fromVect [] = ""
+fromVect (x :: xs) = (singleton x) ++ (fromVect xs)
+
 export
 evalS : (mem : Memory) -> Statement -> Memory
-evalS mem (Initialize sym ex prf) = case prf of
-                                         (Yes a) => case eval mem ex of
-                                                         Nothing => mem
-                                                         (Just x) => add_to_mem mem sym x
-                                         (No contra) => mem
+evalS mem (Initialize sym ex) = case eval mem ex of
+                                     Nothing => mem
+                                     (Just x) => add_to_mem mem (fromVect sym) x
 evalS mem (Update sym ex) = case eval mem ex of
                                  Nothing => mem
                                  (Just x) => (case isElem sym (get_firsts mem) of
@@ -181,6 +165,7 @@ data Instr = Push Nat
            | Add
            | Subtract
            | Multiply
+           | Divide
            | LValue String
            | RValue String
            | Store
@@ -199,6 +184,7 @@ comp (Const k) = [Push k]
 comp (Plus x y) = (comp x)++(comp y)++[Add]
 comp (Minus x y) = (comp x)++(comp y)++[Subtract]
 comp (Times x y) = (comp x)++(comp y)++[Multiply]
+comp (Over ex1 ex2) = (comp ex1) ++ (comp ex2) ++ [Divide]
 comp (Var x y z) = [RValue x]
 comp (Access x y z p) = [RValue (x ++ show (y))]
 
@@ -218,9 +204,7 @@ increment val = val + 1
 -- compiles a statement
 export
 compS : Memory -> (label : Nat) -> (st : Statement) -> List Instr
-compS mem label (Initialize x y prf) = case prf of
-                                            (Yes a) => (comp y) ++ [New x]
-                                            (No contra) => []
+compS mem label (Initialize x y) = (comp y) ++ [New (fromVect x)]
 compS mem label (Update x y) = [LValue x] ++ (comp y) ++ [Store]
 compS mem label (If test thencl elsecl) = (compB mem test) ++ [IfZero (increment label)] ++ (compS mem (increment (increment label)) thencl) ++ [GoTo (increment (increment label))] ++ [Label (increment label)] ++ (compS mem (increment (increment label)) elsecl) ++ [Label (increment (increment label))]
 compS mem label (While test docl) = [GoTo (increment (increment label))] ++ [Label (increment label)] ++ (compS mem (increment (increment label)) docl) ++ [Label (increment (increment label))] ++ (compB mem test) ++ [IfNotZero (increment label)]
@@ -242,20 +226,13 @@ Stack = List Nat
 
 -- returns index of a variable in memory
 export
-index_of : Memory -> Nat -> String -> Nat
-index_of [] idx sym = ?aa_1
+index_of : Memory -> (idx : Nat) -> (sym : String) -> Maybe Nat
+index_of [] idx sym = Nothing
 index_of (x :: xs) idx sym = case fst x == sym of
                                   False => index_of xs (idx + 1) sym
-                                  True => idx
+                                  True => Just idx
 
 
--- returns value of a variable in memory
-export
-value_of : Memory -> String -> Nat
-value_of [] y = ?value_of_rhs_1
-value_of (x :: xs) sym = case fst x == sym of
-                              False => value_of xs sym
-                              True => snd x
 
 -- update a value of a variable at certain index
 export
@@ -279,20 +256,27 @@ find_label label (_ :: xs) = find_label label xs
 export
 run : (mem : Memory) -> (all : List Instr) -> (instr:List Instr) -> (stc:Stack) -> Memory
 run mem all [] stc = mem
-run mem all ((Push k) :: xs) stc = run mem all xs (k :: stc)
+run mem all ((Push k) :: xs) stc = assert_total (run mem all xs (k :: stc))
 run mem all (Add :: xs) [] = mem
-run mem all (Add :: xs) (x :: y :: ys) = run mem all xs (x + y  :: ys)
+run mem all (Add :: xs) (x :: y :: ys) = assert_total (run mem all xs (x + y :: ys))
 run mem all (Add :: xs) [x] = mem
 run mem all (Subtract :: xs) [] = mem
-run mem all (Subtract :: xs) (x :: y :: ys) = run mem all xs (minus y x  :: ys)
+run mem all (Subtract :: xs) (x :: y :: ys) = assert_total (run mem all xs (minus y x  :: ys))
 run mem all (Subtract :: xs) [x] = mem
 run mem all (Multiply :: xs) [] = mem
-run mem all (Multiply :: xs) (x :: y :: ys) = run mem all xs (x * y  :: ys)
+run mem all (Multiply :: xs) (x :: y :: ys) = assert_total (run mem all xs (x * y  :: ys))
 run mem all (Multiply :: xs) [x] = mem
-run mem all ((LValue x) :: xs) stc = case isElem x (get_firsts mem)  of
-                                          (Yes prf) => run mem all xs ((index_of mem 0 x) :: stc)
-                                          (No contra) => mem
-run mem all ((RValue x) :: xs) stc = run mem all xs ((value_of mem x) :: stc)
+run mem all (Divide :: xs) [] = mem
+run mem all (Divide :: xs) [x] = mem
+run mem all (Divide :: xs) (x :: y :: ys) = assert_total (run mem all xs (divNat y x :: ys))
+run mem all ((LValue x) :: xs) stc = case isElem x (get_firsts mem) of
+                                          Yes prf => (case assert_total (index_of mem 0 x) of
+                                                             Just x => assert_total (run mem all xs (x :: stc))
+                                                             Nothing => mem)
+                                          No contra => mem
+run mem all ((RValue x) :: xs) stc = case look_up x mem of
+                                          Just a => assert_total (run mem all xs (a :: stc))
+                                          Nothing => mem
 run mem all (Store :: xs) [] = mem
 run mem all (Store :: xs) (val :: pos :: ys) = run (update_by_index mem pos val) all xs ys
 run mem all (Store :: xs) [x] = mem
@@ -308,13 +292,14 @@ run mem all ((IfNotZero x) :: xs) [] =  mem
 run mem all ((IfNotZero x) :: xs) (test :: ys) = case test == 1 of
                                                False => run mem all xs ys
                                                True => run mem all ((GoTo x) :: xs) ys
--- run mem all ((GoTo x) :: xs) [] =  mem
-run mem all ((GoTo x) :: xs) stc = run mem all (find_label x all) stc
+run mem all ((GoTo x) :: xs) stc = assert_total (run mem all (find_label x all) stc)
 run mem all (EQ :: xs) [] =  mem
+run mem all (EQ :: xs) [x] = mem
 run mem all (EQ :: xs) (x :: y :: ys) = case x == y of
                                          False => run mem all ((Push 0)::xs) ys
                                          True => run mem all ((Push 1)::xs) ys
 run mem all (LT :: xs) [] =  mem
+run mem all (LT :: xs) [x] =  mem
 run mem all (LT :: xs) (x :: y :: ys) = (case compare y x of
                                           LT => run mem all ((Push 1)::xs) ys
                                           EQ => run mem all ((Push 0)::xs) ys
