@@ -6,63 +6,112 @@ import project
 
 main : IO ()
 
-main = do     let mem = (the Memory) []
-              -- initialization
-
-              let program = (the Program) [(Initialize (fromList (unpack "a")) (Const 6))]
+main = do     let mem = []
+              -- variable initialisation
+              let program = [(Initialise (fromList (unpack "a")) (Const 6))]
               let instr = compP mem program
+              let expected = [("a", 6)]
               putStr ("Test 1 : ")
-              putStr (show ((run mem instr instr []) == [("a", 6)]))
-              putStrLn (show ((evalP mem program) == [("a", 6)]))
+              putStr (show ((run mem instr instr []) == expected))
+              putStrLn (show ((evalP mem program) == expected))
+
+              -- update variable
+              let program = [(Initialise (fromList (unpack "a")) (Const 6)), (Update "a" (Const 1))]
+              let instr = compP mem program
+              let expected = [("a", 1)]
+              putStr ("Test 2 : ")
+              putStr (show ((run mem instr instr []) == expected))
+              putStrLn (show ((evalP mem program) == expected))
 
 
               -- addition
-              let program = (the Program) [(Initialize (fromList (unpack "a")) (Const 6)), (Initialize (fromList (unpack "b")) (Const 4)), (Initialize (fromList (unpack "c")) (Plus (Var "b" [("b"), ("a")] (Here)) (Var "a" [("b"), ("a")] (There Here))))]
+              let program = (the Program) [(Initialise (fromList (unpack "a")) (Const 6)), (Initialise (fromList (unpack "b")) (Const 4)), (Initialise (fromList (unpack "c")) (Plus (Var "b" [("a"), ("b")] (There Here)) (Var "a" [("a"), ("b")] (Here))))]
               let instr = compP mem program
-              putStr ("Test 2.1 : ")
-              putStr(show ((run mem instr instr []) == [("c", 10), ("b", 4), ("a", 6)]))
-              putStrLn (show ((evalP mem program) == [("c", 10), ("b", 4), ("a", 6)]))
+              let expected = [("a", 6), ("b", 4), ("c", 10)]
+              putStr ("Test 3 : ")
+              putStr (show ((run mem instr instr []) == expected))
+              putStrLn (show ((evalP mem program) == expected))
+
+              -- subtraction
+              let program = (the Program) [(Initialise (fromList (unpack "a")) (Const 6)), (Initialise (fromList (unpack "b")) (Const 4)), (Initialise (fromList (unpack "c")) (Minus (Var "a" [("a"), ("b")] (Here)) (Var "b" [("a"), ("b")] (There Here))))]
+              let instr = compP mem program
+              let expected = [("a", 6), ("b", 4), ("c", 2)]
+              putStr ("Test 4 : ")
+              putStr (show ((run mem instr instr []) == expected))
+              putStrLn (show ((evalP mem program) == expected))
+
+              -- multiplication
+              let program = (the Program) [(Initialise (fromList (unpack "a")) (Const 6)), (Initialise (fromList (unpack "b")) (Const 4)), (Initialise (fromList (unpack "c")) (Times (Var "b" [("a"), ("b")] (There Here)) (Var "a" [("a"), ("b")] (Here))))]
+              let instr = compP mem program
+              let expected = [("a", 6), ("b", 4), ("c", 24)]
+              putStr ("Test 5 : ")
+              putStr (show ((run mem instr instr []) == expected))
+              putStrLn (show ((evalP mem program) == expected))
 
               -- division
-              let program = (the Program) [(Initialize (fromList (unpack "a")) (Const 3)), (Initialize (fromList (unpack "b")) (Const 6)), (Initialize (fromList (unpack "c")) (Over (Var "b" [("b"), ("a")] (Here)) (Var "a" [("b"), ("a")] (There Here))))]
+              let program = (the Program) [(Initialise (fromList (unpack "a")) (Const 3)), (Initialise (fromList (unpack "b")) (Const 6)), (Initialise (fromList (unpack "c")) (Over (Var "b" [("a"), ("b")] (There Here)) (Var "a" [("a"), ("b")] (Here))))]
               let instr = compP mem program
-              putStr ("Test 2.2 : ")
-              putStr(show ((run mem instr instr []) == [("c", 2), ("b", 6), ("a", 3)]))
-              putStrLn (show ((evalP mem program) == [("c", 2), ("b", 6), ("a", 3)]))
+              let expected = [("a", 3), ("b", 6), ("c", 2)]
+              putStr ("Test 6 : ")
+              putStr (show ((run mem instr instr []) == expected))
+              putStrLn (show ((evalP mem program) == expected))
 
+
+
+              -- if true
+              let program = (the Program) [(Initialise (fromList (unpack "a")) (Const 6)), (If (T) (Initialise (fromList (unpack "b")) (Const 2)) (Initialise (fromList (unpack "b")) (Const 3)))]
+              let instr = compP mem program
+              let expected = [("a", 6), ("b", 2)]
+              putStr ("Test 7 : ")
+              putStr (show ((run mem instr instr []) == expected))
+              putStrLn (show ((evalP mem program) == expected))
+
+              -- if false
+              let program = (the Program) [(Initialise (fromList (unpack "a")) (Const 6)), (If (F) (Initialise (fromList (unpack "b")) (Const 2)) (Initialise (fromList (unpack "b")) (Const 3)))]
+              let instr = compP mem program
+              let expected = [("a", 6), ("b", 3)]
+              putStr ("Test 7 : ")
+              putStr (show ((run mem instr instr []) == expected))
+              putStrLn (show ((evalP mem program) == expected))
 
 
               -- triple if true true false
-              let program = (the Program) [(Initialize (fromList (unpack "a")) (Const 6)), (Initialize (fromList (unpack "b")) (Const 4)), (If (T) (If (T) (If (F) (Initialize (fromList (unpack "c")) (Times (Var "a" [("b"), ("a")] (There Here)) (Var "b" [("b"), ("a")] (Here)))) (Initialize (fromList (unpack "c")) (Const 1))) (Initialize (fromList (unpack "c")) (Const 2))) (Initialize (fromList (unpack "c")) (Const 3)))]
+              let program = (the Program) [(Initialise (fromList (unpack "a")) (Const 6)), (Initialise (fromList (unpack "b")) (Const 4)), (If (T) (If (T) (If (F) (Initialise (fromList (unpack "c")) (Times (Var "a" [("a"), ("b")] (Here)) (Var "b" [("a"), ("b")] (There Here)))) (Initialise (fromList (unpack "c")) (Const 1))) (Initialise (fromList (unpack "c")) (Const 2))) (Initialise (fromList (unpack "c")) (Const 3)))]
               let instr = compP mem program
-              putStr ("Test 3 : ")
-              putStr (show ((run mem instr instr []) == [("c", 1), ("b", 4), ("a", 6)]))
-              putStrLn (show ((evalP mem program) == [("c", 1), ("b", 4), ("a", 6)]))
+              let expected = [("a", 6), ("b", 4), ("c", 1)]
+              putStr ("Test 7 : ")
+              putStr (show ((run mem instr instr []) == expected))
+              putStrLn (show ((evalP mem program) == expected))
+
 
               -- while loop
-              let program = (the Program) [(Initialize (fromList (unpack "a")) (Const 6)), (Initialize (fromList (unpack "b")) (Const 4)), (While (LessThan (Var "b" [("b"), ("a")] (Here)) (Var "a" [("b"), ("a")] (There Here))) (Update "b" (Plus (Var "b" [("b"), ("a")] (Here)) (Const 1))))]
+              let program = (the Program) [(Initialise (fromList (unpack "a")) (Const 6)), (Initialise (fromList (unpack "b")) (Const 4)), (While (LessThan (Var "b" [("a"), ("b")] (There Here)) (Var "a" [("a"), ("b")] (Here))) (Update "b" (Plus (Var "b" [("a"), ("b")] (There Here)) (Const 1))))]
               let instr = compP mem program
-              putStr ("Test 4 : ")
-              putStr (show ((run mem instr instr []) == [("b", 6), ("a", 6)]))
-              putStrLn (show ((evalP mem program) == [("b", 6), ("a", 6)]))
+              let expected = [("a", 6), ("b", 6)]
+              putStr ("Test 8 : ")
+              putStr (show ((run mem instr instr []) == expected))
+              putStrLn (show ((evalP mem program) == expected))
 
-              -- initialize array
+              -- initialise array
               let program = (the Program) [(InitArray "arr" (ArrayNat 5))]
               let instr = compP mem program
-              putStr ("Test 5 : ")
-              putStr (show ((run mem instr instr []) == [("arr0", 0), ("arr1", 0), ("arr2", 0), ("arr3", 0), ("arr4", 0)]))
-              putStrLn (show ((evalP mem program) == [("arr0", 0), ("arr1", 0), ("arr2", 0), ("arr3", 0), ("arr4", 0)]))
+              let expected = [("arr0", 0), ("arr1", 0), ("arr2", 0), ("arr3", 0), ("arr4", 0)]
+              putStr ("Test 9 : ")
+              putStr (show ((run mem instr instr []) == expected))
+              putStrLn (show ((evalP mem program) == expected))
 
               --access array
-              let program = (the Program) [(InitArray "arr" (ArrayNat 5)), (Initialize (fromList (unpack "a"))  (Access "arr" 0 ["arr0", "arr1", "arr2", "arr3", "arr4"] (Here)))]
+              let program = (the Program) [(InitArray "arr" (ArrayNat 5)), (Initialise (fromList (unpack "a"))  (Access "arr" 0 ["arr0", "arr1", "arr2", "arr3", "arr4"] (Here)))]
               let instr = compP mem program
-              putStr ("Test 6 : ")
-              putStr (show ((run mem instr instr []) == [("a", 0), ("arr0", 0), ("arr1", 0), ("arr2", 0), ("arr3", 0), ("arr4", 0)]))
-              putStrLn (show ((evalP mem program) == [("a", 0), ("arr0", 0), ("arr1", 0), ("arr2", 0), ("arr3", 0), ("arr4", 0)]))
+              let expected = [("arr0", 0), ("arr1", 0), ("arr2", 0), ("arr3", 0), ("arr4", 0), ("a", 0)]
+              putStr ("Test 10 : ")
+              putStr (show ((run mem instr instr []) == expected))
+              putStrLn (show ((evalP mem program) == expected))
 
               --update array
               let program = (the Program) [(InitArray "arr" (ArrayNat 5)), (UpdateArray "arr" 0 (Const 6) ["arr0", "arr1", "arr2", "arr3", "arr4"] (Here))]
               let instr = compP mem program
-              putStr ("Test 7 : ")
-              putStr (show ((run mem instr instr []) == [("arr0", 6), ("arr1", 0), ("arr2", 0), ("arr3", 0), ("arr4", 0)]))
-              putStrLn (show ((evalP mem program) == [("arr4", 0), ("arr3", 0), ("arr2", 0), ("arr1", 0), ("arr0", 6)]))
+              let expected = [("arr0", 6), ("arr1", 0), ("arr2", 0), ("arr3", 0), ("arr4", 0)]
+              putStr ("Test 11 : ")
+              putStr (show ((run mem instr instr []) == expected))
+              putStrLn (show ((evalP mem program) == expected))

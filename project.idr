@@ -42,10 +42,11 @@ data Boolean = T
              | LessThan Expr Expr
 
 
+
 -- type statement
 public export
 data Statement: Type where
-    Initialize : (name : Vect (S k) Char) -> Expr -> Statement
+    Initialise : (name : Vect (S k) Char) -> Expr -> Statement
     Update: String -> Expr -> Statement
     If: Boolean -> Statement -> Statement -> Statement
     While: Boolean -> Statement -> Statement
@@ -112,14 +113,14 @@ export
 update : (old : Memory) -> String -> Nat -> (new : Memory) -> Memory
 update [] sym num new = new
 update (x :: xs) sym num new = (case fst x == sym of
-                                                  False => update xs sym num (x::new)
-                                                  True => update xs sym num ((sym, num)::new))
+                                                  False => update xs sym num (new++[x])
+                                                  True => update xs sym num (new++[(sym, num)]))
 
 
 -- adds a variable and a corresponding value to memory
 export
 add_to_mem : Memory -> String -> Nat -> Memory
-add_to_mem mem sym val = (sym, val) :: mem
+add_to_mem mem sym val = mem ++ [(sym, val)]
 
 -- evaluates a statement
 
@@ -129,7 +130,7 @@ fromVect (x :: xs) = (singleton x) ++ (fromVect xs)
 
 export
 evalS : (mem : Memory) -> Statement -> Memory
-evalS mem (Initialize sym ex) = case eval mem ex of
+evalS mem (Initialise sym ex) = case eval mem ex of
                                      Nothing => mem
                                      (Just x) => add_to_mem mem (fromVect sym) x
 evalS mem (Update sym ex) = case eval mem ex of
@@ -190,11 +191,11 @@ comp (Access x y z p) = [RValue (x ++ show (y))]
 
 -- compiles a boolean
 export
-compB : Memory -> Boolean -> List Instr
-compB mem T = [Push 1]
-compB mem F = [Push 0]
-compB mem (Equals x y) = (comp x)++(comp y) ++ [EQ]
-compB mem (LessThan x y) = (comp x)++(comp y) ++ [LT]
+compB : Boolean -> List Instr
+compB T = [Push 1]
+compB F = [Push 0]
+compB (Equals x y) = (comp x)++(comp y) ++ [EQ]
+compB (LessThan x y) = (comp x)++(comp y) ++ [LT]
 
 -- increments a label by 1
 export
@@ -203,20 +204,20 @@ increment val = val + 1
 
 -- compiles a statement
 export
-compS : Memory -> (label : Nat) -> (st : Statement) -> List Instr
-compS mem label (Initialize x y) = (comp y) ++ [New (fromVect x)]
-compS mem label (Update x y) = [LValue x] ++ (comp y) ++ [Store]
-compS mem label (If test thencl elsecl) = (compB mem test) ++ [IfZero (increment label)] ++ (compS mem (increment (increment label)) thencl) ++ [GoTo (increment (increment label))] ++ [Label (increment label)] ++ (compS mem (increment (increment label)) elsecl) ++ [Label (increment (increment label))]
-compS mem label (While test docl) = [GoTo (increment (increment label))] ++ [Label (increment label)] ++ (compS mem (increment (increment label)) docl) ++ [Label (increment (increment label))] ++ (compB mem test) ++ [IfNotZero (increment label)]
-compS mem label (InitArray sym (ArrayNat Z)) = []
-compS mem label (InitArray sym (ArrayNat (S k))) = assert_total ([Push 0] ++ [New (sym ++ (show k))] ++ (compS mem label (InitArray sym (ArrayNat (k)))))
-compS mem label (UpdateArray sym ind new firsts prf) = [LValue (sym ++ (show ind))] ++ (comp new) ++ [Store]
+compS : Nat -> Statement -> List Instr
+compS l (Initialise x y) = (comp y) ++ [New (fromVect x)]
+compS l (Update x y) = [LValue x] ++ (comp y) ++ [Store]
+compS l (If test thencl elsecl) = (compB test) ++ [IfZero (increment l)] ++ (compS (increment (increment l)) thencl) ++ [GoTo (increment (increment l))] ++ [Label (increment l)] ++ (compS (increment (increment l)) elsecl) ++ [Label (increment (increment l))]
+compS l (While test docl) = [GoTo (increment (increment l))] ++ [Label (increment l)] ++ (compS (increment (increment l)) docl) ++ [Label (increment (increment l))] ++ (compB test) ++ [IfNotZero (increment l)]
+compS l (InitArray s (ArrayNat Z)) = []
+compS l (InitArray s (ArrayNat (S k))) = assert_total ([Push 0] ++ (compS l (InitArray s (ArrayNat (k))))) ++ [New (s ++ (show k))]
+compS l (UpdateArray s ind new firsts prf) = [LValue (s ++ (show ind))] ++ (comp new) ++ [Store]
 
 -- compiles a program
 export
 compP : Memory -> (pr: Program) -> List Instr
 compP mem [] = []
-compP mem (x :: xs) = (compS mem 0 x) ++ (compP mem xs)
+compP mem (x :: xs) = (compS 0 x) ++ (compP mem xs)
 
 
 -- type stack
