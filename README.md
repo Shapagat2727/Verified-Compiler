@@ -1,4 +1,4 @@
-# CS5899 code - Verified compiler
+# Verified compiler
 
 ## Technologies
 Project is created with:
@@ -22,3 +22,4 @@ To run the project.idr file, run the command:
 ```bash
 idris project.idr
 ```
+![License](https://img.shields.io/github/license/Shapagat2727/Verified-Compiler)
