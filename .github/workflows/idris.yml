@@ -19,6 +19,6 @@ jobs:
         sudo apt-get install -y git build-essential libgmp-dev
         git clone https://github.com/idris-lang/Idris2.git
         cd Idris2
-        make bootstrap SCHEME=chez
+        make bootstrap SCHEME=chezscheme
         sudo make install
         which idris2
