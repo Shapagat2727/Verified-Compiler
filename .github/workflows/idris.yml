@@ -22,7 +22,8 @@ jobs:
         make bootstrap SCHEME=chezscheme
         sudo make install
         sudo cp ./bootstrap-build/bin/idris2 /usr/local/bin/
-        sudo cp ./bootstrap-build/bin/idris2_app /usr/local/bin/
+        sudo cp -r ./bootstrap-build/bin/idris2_app /usr/local/bin/
+        sudo chmod +x /usr/local/bin/idris2
         which idris2
         idris2 --version
     
