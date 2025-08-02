@@ -16,7 +16,7 @@ jobs:
     - name: Install Idris 2
       run: |
         sudo apt-get update
-        sudo apt-get install -y git build-essential libgmp-dev
+        sudo apt-get install -y git build-essential libgmp-dev chezscheme
         git clone https://github.com/idris-lang/Idris2.git
         cd Idris2
         make bootstrap SCHEME=chezscheme
