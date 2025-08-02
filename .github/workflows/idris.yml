@@ -1,0 +1,24 @@
+name: Idris CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install Idris 2
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git build-essential libgmp-dev
+        git clone https://github.com/idris-lang/Idris2.git
+        cd Idris2
+        make bootstrap SCHEME=chez
+        sudo make install
+        which idris2
